@@ -1,0 +1,36 @@
+{
+  "name": "simple",
+  "version": "1.0.0",
+  "description": "Hello World",
+  "main": "app.js",
+  "scripts": {
+    "test": "nyc mocha --recursive lib/test",
+    "start": "node ./lib/app.js",
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "vscode": "env-cmd .env code ."
+  },
+  "author": "johnshew@users.noreply.github.com",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/chai": "^4.1.4",
+    "@types/chai-http": "^3.0.5",
+    "@types/debug": "0.0.30",
+    "@types/mocha": "^5.2.5",
+    "@types/mongodb": "^3.1.9",
+    "@types/restify": "^7.2.5",
+    "@types/uuid": "^3.4.4",
+    "env-cmd": "^8.0.2",
+    "nyc": "^13.0.1",
+    "typescript": "^3.0.3"
+  },
+  "dependencies": {
+    "chai": "^4.1.2",
+    "chai-http": "^4.2.0",
+    "debug": "^4.0.1",
+    "mocha": "^5.2.0",
+    "mongodb": "^3.1.6",
+    "restify": "^7.2.1",
+    "uuid": "^3.3.2"
+  }
+}
