@@ -4,14 +4,17 @@ let debug = _debug('server');
 import * as restify from 'restify';
 import * as uuid from 'uuid';
 
-import { ServerAuth } from './simpleAuth';
+import { ServerAuth, AuthTokens } from './simpleAuth';
+import { GraphHelper } from './graphHelper';
 
-var id = '84f9f67f-71e5-447b-9d4b-140fb58c6cc7';
-var pwd = 'prrhHHX688#$smrVZMO40;:';
-var uri = 'http://127.0.0.1:8080/';
-var scp = ['openid', 'offline_access', 'mail.read'];
+var id = 'da733bd5-6ee6-40e0-b6a0-46cff674695a'; // '84f9f67f-71e5-447b-9d4b-140fb58c6cc7';
+var pwd = 'remjqMXQO3:jzPYY2554!=^'; // 'prrhHHX688#$smrVZMO40;:';
+var serverUrl = 'http://localhost:8080';
+var authUri = serverUrl + '/auth';
+var defaultScopes = ['openid', 'offline_access', 'mail.read'];
 
-let serverAuth = new ServerAuth(id, pwd, uri);
+let serverAuth = new ServerAuth(id, pwd, authUri);
+let graphHelper = new GraphHelper(serverAuth);
 
 // Setup restify server
 export function create(config: any, callback?: () => void) {
@@ -30,75 +33,54 @@ export function create(config: any, callback?: () => void) {
         res.redirect('./public/test.html', next);
     });
 
-    server.get("/public/*",
-        restify.plugins.serveStatic({ directory: __dirname + '/..' })
-    );
+    server.get("/public/*", restify.plugins.serveStatic({ directory: __dirname + '/..' }));
 
-    server.get('/api/v1.0/hello', async (req, res, next) => {
-        res.send('hello');
-        return next();
+
+    server.get('/login', (req, res, next) =>{
+        console.log('Request for '+ req.url);
+        res.redirect(serverAuth.authUrl(defaultScopes, authUri), next);
     });
 
+    server.get('/auth', async (req, res, next) => {
+        console.log("Request for " + req.url);
 
-    server.get('/*', async (req, res, next) => {
-        if (req.url != "/favicon.ico") {
-            console.log("Request for " + req.url);
-
+        try {
             // look for authorization code coming in (indicates redirect from interative login/consent)
             var code = req.query['code'];
             if (code) {
-                serverAuth.getTokenByAuthCode(code, scp).then(authResult => {
-                    // cache the token and redirect to root
-                    // NOTE: only caching refresh token, meaning we will go to server each time we need access token...not ideal
-                    // NOTE: cookie token cache not ideal
-                    // NOTE: cookie expiration set to 24 hours...this should likely be based on token expiration
-                    res.writeHead(301, {
-                        'Location': '/',
-                        'Set-Cookie': 'tokenCache=' + authResult.refresh_token + '; expires=' + new Date(new Date().getTime() + 86409000).toUTCString()
-                    }); 
-                    res.end();
-                });
-            }
-            else {
-                // check token cache
-                var refreshToken = getCookie(req, 'tokenCache');
-                if (refreshToken != null) {
-                    // check if cache is still good
-                    serverAuth.getAccessTokenSilent(refreshToken, scp).then(authResult => {
-                        // use the access token to call the graph for last high importance email
-                        fetch('https://graph.microsoft.com/v1.0/me/messages', {
-                            headers: {
-                                'Accept': 'application/json',
-                                'Authorization': 'Bearer ' + authResult.access_token
-                            }
-                        }).then(d => {
-                            d.json().then((data) => {
-                                res.writeHead(200, {
-                                    'Content-Type': 'text/html',
-                                    'Set-Cookie': 'tokenCache=' + authResult.refresh_token + '; expires=' + new Date(new Date().getTime() + 86409000).toUTCString()
-                                });
-                                res.end(`<html><head></head><body>Last email: ${data.value[0].subject}</body></html>`);
-                            });
-                        }, (err) => {
-                            res.writeHead(200, {
-                                'Content-Type': 'text/html'
-                            });
-                            res.end('<html><head></head><body>BAD</body></html>');
-                        });
-
-                    }, (err) => {
-                        // refresh token is bad...redirect the user to interactive login for authorization code
-                        res.writeHead(301, { 'Location': serverAuth.getAuthUrl(scp) });
-                        res.end();
-                    });
-                }
-                else {
-                    // redirect the user to interactive login for authorization code
-                    res.writeHead(301, { 'Location': serverAuth.getAuthUrl(scp) });
-                    res.end();
-                }
+                var authResult = await serverAuth.getTokenByAuthCode(code, defaultScopes)
+                // cache the token and redirect to root
+                // NOTE: only caching refresh token, meaning we will go to server each time we need access token...not ideal
+                // NOTE: cookie token cache not ideal
+                // NOTE: cookie expiration set to 24 hours...this should likely be based on token expiration
+                res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(authResult) + '; expires=' + new Date(new Date().getTime() + 86409000).toUTCString());
+                res.redirect('/', next); // !TODO could pick up a state path
+                res.end();
+                return;
             }
         }
+        catch (reason) { console.log('Error in /auth processing: ' + reason) }
+    });
+
+    
+    server.get('/mail', async (req, res, next) => {
+        console.log("Request for " + req.url);
+        let tokenCache = new AuthTokens(JSON.parse(getCookie(req, 'tokenCache')));
+
+        let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/v1.0/me/messages', tokenCache);
+
+        if (data) {
+            res.header('Content-Type', 'text/html');
+            if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(new Date().getTime() + 86409000).toUTCString()) }
+            res.end(`<html><head></head><body>Last email: ${data.value[0].subject}</body></html>`);
+            next();
+            return;
+        }
+
+        res.setHeader('Content-Type', 'text/html');
+        res.end('<html><head></head><body>Unable to get response from graph</body></html>');
+        next();
+        // Could also send them back to authorize.
     });
 
     /*     
@@ -108,7 +90,7 @@ export function create(config: any, callback?: () => void) {
             res.send(201, 'did something');
             next();
         });
-    
+     
         server.get('/api/v1.0/something/:id', async (req, res, next) => {
             if (!req.params.hasOwnProperty('id') || typeof req.params.id != "string") {
                 res.send(400, "id not found");
@@ -124,7 +106,7 @@ export function create(config: any, callback?: () => void) {
             }
             next();
         });
-    
+     
         server.put('/api/v1.0/reminders/:id', async (req, res, next) => {
             let id = undefined;
             if (!req.params.hasOwnProperty('id') && typeof req.params.id != "string") {
@@ -139,7 +121,7 @@ export function create(config: any, callback?: () => void) {
             res.send(exists ? 200 : 201, id);
             next();
         });
-    
+     
         server.patch('/api/v1.0/reminders/:id', async (req, res, next) => {
             let user = "j@s.c";
             if (!req.params.hasOwnProperty('id') && typeof req.params.id != "string") {
@@ -160,7 +142,7 @@ export function create(config: any, callback?: () => void) {
             res.send(created ? 201 : 200, reminder);
             next();
         });
-    
+     
         server.del('/api/v1.0/reminders/:id', async (req, res, next) => {
             let user = "j@s.c";
             if (!req.params.hasOwnProperty('id') && typeof req.params.id != "string") {
@@ -177,7 +159,7 @@ export function create(config: any, callback?: () => void) {
             }
             next();
         });
-    
+     
     */
 
 
@@ -195,7 +177,7 @@ export function create(config: any, callback?: () => void) {
 
 function getCookie(req: restify.Request, key: string): string {
     var list = {};
-    var rc = req.header['cookie'];
+    var rc = req.headers['cookie'];
 
     rc && rc.split(';').forEach(cookie => {
         var parts = cookie.split('=');

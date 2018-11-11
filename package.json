@@ -13,24 +13,25 @@
   "author": "johnshew@users.noreply.github.com",
   "license": "MIT",
   "devDependencies": {
-    "@types/chai": "^4.1.4",
+    "@types/chai": "^4.1.7",
     "@types/chai-http": "^3.0.5",
     "@types/debug": "0.0.30",
     "@types/mocha": "^5.2.5",
-    "@types/mongodb": "^3.1.9",
-    "@types/restify": "^7.2.5",
+    "@types/mongodb": "^3.1.14",
+    "@types/restify": "^7.2.6",
     "@types/uuid": "^3.4.4",
     "env-cmd": "^8.0.2",
-    "nyc": "^13.0.1",
-    "typescript": "^3.0.3"
+    "nyc": "^13.1.0",
+    "typescript": "^3.1.6"
   },
   "dependencies": {
     "chai": "^4.1.2",
     "chai-http": "^4.2.0",
-    "debug": "^4.0.1",
+    "debug": "^4.1.0",
     "mocha": "^5.2.0",
-    "mongodb": "^3.1.6",
-    "restify": "^7.2.1",
+    "mongodb": "^3.1.9",
+    "node-fetch": "^2.2.1",
+    "restify": "^7.2.2",
     "uuid": "^3.3.2"
   }
 }
