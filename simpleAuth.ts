@@ -30,6 +30,7 @@ export class ServerAuth {
         if (!authTokens) { return [null, null]; }
         if (authTokens.access_token && authTokens.expires_on && authTokens.expires_on > Date.now()) { return [authTokens.access_token, null] }
         if (authTokens.refresh_token) {
+            console.log('No access token or expired. Acquiring updated access_token using the refresh_token');
             var authResult = await this.getAccessTokenSilent(authTokens.refresh_token, scopes ? scopes : []);
             return [authResult.access_token, authResult]
         }
@@ -52,29 +53,33 @@ export class ServerAuth {
             body: data
         });
         var data = await res.json();
-        if (data['expires_in']) { 
-            let expires = new Date(Date.now() + data['expires_in']*1000);
-            data['expires_on'] = expires.getTime(); 
+        if (data['expires_in']) {
+            let expires = new Date(Date.now() + data['expires_in'] * 1000);
+            data['expires_on'] = expires.getTime();
         }
         return new AuthTokens(data);
     }
 
     // gets new access token using refresh token
     async getAccessTokenSilent(refreshToken: string, scope: string[]) {
-            var data = `client_id=${this.id}`;
-            data += `&scope=${scope.join('%20')}`;
-            data += `&refresh_token=${refreshToken}`;
-            data += `&redirect_uri=${this.defaultUri}`;
-            data += `&grant_type=refresh_token&client_secret=${this.password}`;
+        var data = `client_id=${this.id}`;
+        data += `&scope=${scope.join('%20')}`;
+        data += `&refresh_token=${refreshToken}`;
+        data += `&redirect_uri=${this.defaultUri}`;
+        data += `&grant_type=refresh_token&client_secret=${this.password}`;
 
-            var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: data
-            });
-            var data = await res.json();
-            return new AuthTokens(data);
+        var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: data
+        });
+        var data = await res.json();
+        if (data['expires_in']) {
+            let expires = new Date(Date.now() + data['expires_in'] * 1000);
+            data['expires_on'] = expires.getTime();
+        }
+        return new AuthTokens(data);
     }
 }

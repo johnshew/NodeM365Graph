@@ -84,7 +84,7 @@ export function create(config: any, callback?: () => void) {
         }
 
         res.setHeader('Content-Type', 'text/html');
-        res.end('<html><head></head><body>Not <br/><a href="/">Continue</a></body></html>');
+        res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
         next();
         // Could also send them back to authorize.
     });
@@ -114,7 +114,7 @@ export function create(config: any, callback?: () => void) {
         }
 
         res.setHeader('Content-Type', 'text/html');
-        res.end('<html><head></head><body>Not <br/><a href="/">Continue</a></body></html>');
+        res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
         next();
         // Could also send them back to authorize.
     });
