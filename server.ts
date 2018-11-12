@@ -36,8 +36,8 @@ export function create(config: any, callback?: () => void) {
     server.get("/public/*", restify.plugins.serveStatic({ directory: __dirname + '/..' }));
 
 
-    server.get('/login', (req, res, next) =>{
-        console.log('Request for '+ req.url);
+    server.get('/login', (req, res, next) => {
+        console.log('Request for ' + req.url);
         res.redirect(serverAuth.authUrl(defaultScopes, authUri), next);
     });
 
@@ -49,12 +49,10 @@ export function create(config: any, callback?: () => void) {
             var code = req.query['code'];
             if (code) {
                 var authResult = await serverAuth.getTokenByAuthCode(code, defaultScopes)
-                // cache the token and redirect to root
-                // NOTE: only caching refresh token, meaning we will go to server each time we need access token...not ideal
-                // NOTE: cookie token cache not ideal
-                // NOTE: cookie expiration set to 24 hours...this should likely be based on token expiration
-                res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(authResult) + '; expires=' + new Date(new Date().getTime() + 86409000).toUTCString());
-                res.redirect('/', next); // !TODO could pick up a state path
+                // NOTE: cookie token cache not ideal - but could encrypt the tokens on the server
+                res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(authResult) + '; expires=' + new Date(Date.now() + 365*24*60*60*1000).toUTCString());
+                var location = req.query['state'] ? decodeURI(req.query['state']) : '/';
+                res.redirect(location, next);
                 res.end();
                 return;
             }
@@ -62,19 +60,20 @@ export function create(config: any, callback?: () => void) {
         catch (reason) { console.log('Error in /auth processing: ' + reason) }
     });
 
-    
+
     server.get('/mail', async (req, res, next) => {
         console.log("Request for " + req.url);
-        let tokenCache = new AuthTokens(JSON.parse(getCookie(req, 'tokenCache')));
-
-        let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/v1.0/me/messages', tokenCache);
-
-        if (data) {
-            res.header('Content-Type', 'text/html');
-            if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(new Date().getTime() + 86409000).toUTCString()) }
-            res.end(`<html><head></head><body>Last email: ${data.value[0].subject}</body></html>`);
-            next();
-            return;
+        let tokenCache = getCookie(req, 'tokenCache');
+        if (tokenCache) {
+            let authTokens = new AuthTokens(JSON.parse(tokenCache));
+            let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/v1.0/me/messages', authTokens);
+            if (data) {
+                res.header('Content-Type', 'text/html');
+                if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365*24*60*60*1000).toUTCString()) }
+                res.end(`<html><head></head><body>Last email: ${data.value[0].subject}</body></html>`);
+                next();
+                return;
+            }
         }
 
         res.setHeader('Content-Type', 'text/html');
@@ -177,11 +176,12 @@ export function create(config: any, callback?: () => void) {
 
 function getCookie(req: restify.Request, key: string): string {
     var list = {};
-    var rc = req.headers['cookie'];
+    var rc = req.header('cookie');
 
     rc && rc.split(';').forEach(cookie => {
         var parts = cookie.split('=');
-        list[parts.shift().trim()] = decodeURI(parts.join('='));
+        var name = parts.shift();
+        if (name) list[name] = decodeURI(parts.join('='));
     })
 
     return (key && key in list) ? list[key] : null;
