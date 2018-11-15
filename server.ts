@@ -6,9 +6,12 @@ import * as uuid from 'uuid';
 
 import { ServerAuth, AuthTokens } from './simpleAuth';
 import { GraphHelper } from './graphHelper';
+import { exists } from 'fs';
 
-var id = 'da733bd5-6ee6-40e0-b6a0-46cff674695a'; // '84f9f67f-71e5-447b-9d4b-140fb58c6cc7';
-var pwd = 'remjqMXQO3:jzPYY2554!=^'; // 'prrhHHX688#$smrVZMO40;:';
+var id = process.env.AppClientId; 
+var pwd =process.env.AppClientSecret; 
+if (!id || !pwd) { throw new Error('No app credentials.'); process.exit(); }
+
 var serverUrl = 'http://localhost:8080';
 var authUri = serverUrl + '/auth';
 var defaultScopes = ['openid', 'offline_access', 'mail.read', 'tasks.read'];
@@ -81,6 +84,7 @@ export function create(config: any, callback?: () => void) {
             res.setHeader('Content-Type', 'text/html');
             res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
             next();
+            return;
         }
 
         res.setHeader('Content-Type', 'text/html');
@@ -111,6 +115,7 @@ export function create(config: any, callback?: () => void) {
             res.setHeader('Content-Type', 'text/html');
             res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
             next();
+            return;
         }
 
         res.setHeader('Content-Type', 'text/html');
