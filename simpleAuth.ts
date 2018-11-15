@@ -39,19 +39,20 @@ export class ServerAuth {
 
     // gets tokens from authorization code
     async getTokenByAuthCode(code: string, scope: string[]): Promise<AuthTokens> {
-        var data = `client_id=${this.id}`;
-        data += `&scope=${scope.join('%20')}`;
-        data += `&code=${code}`;
-        data += `&redirect_uri=${this.defaultUri}`;
-        data += `&grant_type=authorization_code&client_secret=${this.password}`;
+        var body = `client_id=${this.id}`;
+        body += `&scope=${scope.join('%20')}`;
+        body += `&code=${code}`;
+        body += `&redirect_uri=${this.defaultUri}`;
+        body += `&grant_type=authorization_code&client_secret=${this.password}`;
 
         var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: data
+            body: body
         });
+        if (res.status !== 200) { throw new Error ('get token failed.'); }
         var data = await res.json();
         if (data['expires_in']) {
             let expires = new Date(Date.now() + data['expires_in'] * 1000);
@@ -62,19 +63,20 @@ export class ServerAuth {
 
     // gets new access token using refresh token
     async getAccessTokenSilent(refreshToken: string, scope: string[]) {
-        var data = `client_id=${this.id}`;
-        data += `&scope=${scope.join('%20')}`;
-        data += `&refresh_token=${refreshToken}`;
-        data += `&redirect_uri=${this.defaultUri}`;
-        data += `&grant_type=refresh_token&client_secret=${this.password}`;
+        var body = `client_id=${this.id}`;
+        body += `&scope=${scope.join('%20')}`;
+        body += `&refresh_token=${refreshToken}`;
+        body += `&redirect_uri=${this.defaultUri}`;
+        body += `&grant_type=refresh_token&client_secret=${this.password}`;
 
         var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: data
+            body: body
         });
+        if (res.status !== 200) { throw new Error ('get token failed.'); }
         var data = await res.json();
         if (data['expires_in']) {
             let expires = new Date(Date.now() + data['expires_in'] * 1000);

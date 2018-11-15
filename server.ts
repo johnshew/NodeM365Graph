@@ -14,7 +14,7 @@ if (!id || !pwd) { throw new Error('No app credentials.'); process.exit(); }
 
 var serverUrl = 'http://localhost:8080';
 var authUri = serverUrl + '/auth';
-var defaultScopes = ['openid', 'offline_access', 'mail.read', 'tasks.read'];
+var defaultScopes = ['openid', 'offline_access', 'mail.read', 'tasks.read', 'user.readwrite'];
 
 let serverAuth = new ServerAuth(id, pwd, authUri);
 let graphHelper = new GraphHelper(serverAuth);
@@ -123,6 +123,38 @@ export function create(config: any, callback?: () => void) {
         next();
         // Could also send them back to authorize.
     });
+
+    server.get('/profile', async (req, res, next) => {
+        console.log("Request for " + req.url);
+        let tokenCache = getCookie(req, 'tokenCache');
+
+        if (tokenCache) {
+            let authTokens = new AuthTokens(JSON.parse(tokenCache));
+
+            let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', authTokens);
+            
+            if (data) {
+                res.header('Content-Type', 'text/html');
+                if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
+                res.write(`<html><head></head><body><h1>Tasks</h1>`);                
+                res.write(`<p> ${ JSON.stringify(data) } </p>`);
+                res.end(`</body></html>`);
+                next();
+                return;
+            }
+            // if you get here there was a send problem
+            res.setHeader('Content-Type', 'text/html');
+            res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
+            next();
+            return;
+        }
+
+        res.setHeader('Content-Type', 'text/html');
+        res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
+        next();
+        // Could also send them back to authorize.
+    });
+
 
     /*     
         server.post('/api/v1.0/something', async (req, res, next) => {
