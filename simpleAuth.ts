@@ -1,5 +1,6 @@
 import * as http from 'http';
 import * as fetch from 'node-fetch';
+import { EventEmitter } from 'events';
 
 export class AuthTokens {
     access_token: string;
@@ -15,35 +16,46 @@ export class AuthTokens {
     }
 }
 
-export class ServerAuth {
+export class ServerAuth extends EventEmitter {
     // const app reg details  
 
-    constructor(private id: string, private password: string, private defaultUri: string) { }
+    public authTokens = new AuthTokens({});
 
-    // gets code authorization redirect
-    authUrl(scope: string[], uri?: string): string {
-        return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${this.id}&response_type=code&redirect_uri=${uri || this.defaultUri}&scope=${scope.join('%20')}`;
+    constructor(private appId: string, private appPassword: string, private defaultRedirectUri: string, private scopes: string[] = []) {
+        super();
+
     }
 
+    // gets code authorization redirect
+    authUrl(): string {
+        return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${this.appId}&response_type=code&redirect_uri=${this.defaultRedirectUri}&scope=${this.scopes.join('%20')}`;
+    }
 
-    async getAccessToken(authTokens: AuthTokens, resource?: string, scopes?: string[]): Promise<[string | null, AuthTokens | null]> {
-        if (!authTokens) { return [null, null]; }
-        if (authTokens.access_token && authTokens.expires_on && authTokens.expires_on > Date.now()) { return [authTokens.access_token, null] }
-        if (authTokens.refresh_token) {
-            console.log('No access token or expired. Acquiring updated access_token using the refresh_token');
-            var authResult = await this.getAccessTokenSilent(authTokens.refresh_token, scopes ? scopes : []);
-            return [authResult.access_token, authResult]
+    addScopes(scopes: string[]) {
+        this.scopes.concat(scopes);
+    }
+
+    updateAuthTokens(data : Object) {
+        this.authTokens = new AuthTokens(data);
+    }
+
+    async getAccessToken(resource?: string): Promise<string> {
+        if (this.authTokens.access_token && this.authTokens.expires_on && this.authTokens.expires_on > Date.now()) { return this.authTokens.access_token }
+        if (this.authTokens.refresh_token) {
+            await this.refreshAuthTokens();
+            this.emit('refreshed');
+            return this.authTokens.access_token;
         }
-        return [null, null];
+        throw new Error('No access token available');
     }
 
     // gets tokens from authorization code
-    async getTokenByAuthCode(code: string, scope: string[]): Promise<AuthTokens> {
-        var body = `client_id=${this.id}`;
-        body += `&scope=${scope.join('%20')}`;
+    async handleAuthCode(code: string): Promise<void> {
+        var body = `client_id=${this.appId}`;
+        body += `&scope=${this.scopes.join('%20')}`;
         body += `&code=${code}`;
-        body += `&redirect_uri=${this.defaultUri}`;
-        body += `&grant_type=authorization_code&client_secret=${this.password}`;
+        body += `&redirect_uri=${this.defaultRedirectUri}`;
+        body += `&grant_type=authorization_code&client_secret=${this.appPassword}`;
 
         var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
             method: 'POST',
@@ -52,22 +64,23 @@ export class ServerAuth {
             },
             body: body
         });
-        if (res.status !== 200) { throw new Error ('get token failed.'); }
+        if (res.status !== 200) { throw new Error('get token failed.'); }
         var data = await res.json();
         if (data['expires_in']) {
             let expires = new Date(Date.now() + data['expires_in'] * 1000);
             data['expires_on'] = expires.getTime();
         }
-        return new AuthTokens(data);
+        this.authTokens = new AuthTokens(data);
+        this.emit('refreshed');
     }
 
     // gets new access token using refresh token
-    async getAccessTokenSilent(refreshToken: string, scope: string[]) {
-        var body = `client_id=${this.id}`;
-        body += `&scope=${scope.join('%20')}`;
-        body += `&refresh_token=${refreshToken}`;
-        body += `&redirect_uri=${this.defaultUri}`;
-        body += `&grant_type=refresh_token&client_secret=${this.password}`;
+    async refreshAuthTokens() {
+        var body = `client_id=${this.appId}`;
+        body += `&scope=${this.scopes.join('%20')}`;
+        body += `&refresh_token=${this.authTokens.refresh_token}`;
+        body += `&redirect_uri=${this.defaultRedirectUri}`;
+        body += `&grant_type=refresh_token&client_secret=${this.appPassword}`;
 
         var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
             method: 'POST',
@@ -76,12 +89,19 @@ export class ServerAuth {
             },
             body: body
         });
-        if (res.status !== 200) { throw new Error ('get token failed.'); }
+        if (res.status !== 200) { throw new Error('get token failed.'); }
         var data = await res.json();
         if (data['expires_in']) {
             let expires = new Date(Date.now() + data['expires_in'] * 1000);
             data['expires_on'] = expires.getTime();
         }
-        return new AuthTokens(data);
+        this.authTokens = new AuthTokens(data);
+        this.emit('refreshed');
     }
 }
+
+export declare interface ServerAuth {
+    on(event: 'refreshed', listener: () => void): this;
+    // on(event: string, listener: Function): this;
+}
+

@@ -7,8 +7,8 @@ export class GraphHelper {
 
     constructor(private serverAuth: ServerAuth) { }
 
-    public async get(url: string, authToken: AuthTokens): Promise<[any, AuthTokens | null]> {
-        let [accessToken, updatedAuthToken] = await this.serverAuth.getAccessToken(authToken);
+    public async get(url: string): Promise<any> {
+        let accessToken = await this.serverAuth.getAccessToken();
         let response = await fetch(url, {
             headers: {
                 'Accept': 'application/json',
@@ -17,14 +17,14 @@ export class GraphHelper {
         });
         if (response.status == 200) {
             let data = await response.json();
-            return [data,updatedAuthToken];
+            return data;
         }
-        return [null,null]
+        throw new Error ('get failed');
     }
 
     
-    public async patch(url: string, body: any, authToken: AuthTokens): Promise<AuthTokens | null> {
-        let [accessToken, updatedAuthToken] = await this.serverAuth.getAccessToken(authToken);
+    public async patch(url: string, body: any): Promise<void> {
+        let accessToken = await this.serverAuth.getAccessToken();
         let response = await fetch(url, {
             method : 'patch',
             headers: {
@@ -35,8 +35,8 @@ export class GraphHelper {
             body: JSON.stringify(body)
         });
         if (response.status == 200 || response.status == 204) {
-            return updatedAuthToken;
+          return;    
         }
-        return null;
+        throw new Error('patch failed');
     }
 }

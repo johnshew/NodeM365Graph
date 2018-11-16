@@ -16,8 +16,22 @@ var serverUrl = 'http://localhost:8080';
 var authUri = serverUrl + '/auth';
 var defaultScopes = ['openid', 'offline_access', 'mail.read', 'tasks.read', 'user.readwrite'];
 
-let serverAuth = new ServerAuth(id, pwd, authUri);
+let serverAuth = new ServerAuth(id, pwd, authUri, defaultScopes);
 let graphHelper = new GraphHelper(serverAuth);
+
+let updateAuthTokens = false;
+serverAuth.on('refreshed', () => { 
+    console.log('refreshed');
+    updateAuthTokens = true
+});
+
+function handleAuthHeaders(res: restify.Response) {
+    if (updateAuthTokens) {
+        res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(serverAuth.authTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
+        updateAuthTokens = false;
+    }
+}
+
 
 // Setup restify server
 export function create(config: any, callback?: () => void) {
@@ -29,8 +43,6 @@ export function create(config: any, callback?: () => void) {
     server.use(restify.plugins.bodyParser());
     server.use(restify.plugins.queryParser())
 
-
-
     // Make it a web server
     server.get('/', (req, res, next) => {
         res.redirect('./public/test.html', next);
@@ -41,7 +53,7 @@ export function create(config: any, callback?: () => void) {
 
     server.get('/login', (req, res, next) => {
         console.log('Request for ' + req.url);
-        res.redirect(serverAuth.authUrl(defaultScopes, authUri), next);
+        res.redirect(serverAuth.authUrl(), next);
     });
 
     server.get('/auth', async (req, res, next) => {
@@ -51,9 +63,9 @@ export function create(config: any, callback?: () => void) {
             // look for authorization code coming in (indicates redirect from interative login/consent)
             var code = req.query['code'];
             if (code) {
-                var authResult = await serverAuth.getTokenByAuthCode(code, defaultScopes)
+                await serverAuth.handleAuthCode(code)
                 // NOTE: cookie token cache not ideal - but could encrypt the tokens on the server
-                res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(authResult) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
+                handleAuthHeaders(res);
                 var location = req.query['state'] ? decodeURI(req.query['state']) : '/';
                 res.redirect(location, next);
                 res.end();
@@ -61,32 +73,39 @@ export function create(config: any, callback?: () => void) {
             }
         }
         catch (reason) { console.log('Error in /auth processing: ' + reason) }
+        res.setHeader('Content-Type', 'text/html');
+        res.end('<html><head></head><body>Request to authorize failed<br/><a href="/">Continue</a></body></html>');
+        next();
+        return;
     });
 
 
     server.get('/mail', async (req, res, next) => {
-        console.log("Request for " + req.url);
-        let tokenCache = getCookie(req, 'tokenCache');
+        try {
+            console.log("Request for " + req.url);
+            let tokenCache = getCookie(req, 'tokenCache');
 
-        if (tokenCache) {
-            let authTokens = new AuthTokens(JSON.parse(tokenCache));
-            let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/v1.0/me/messages', authTokens);
-            if (data) {
-                res.header('Content-Type', 'text/html');
-                if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
-                res.write(`<html><head></head><body><h1>Mail</h1>`);
-                data.value.forEach(i => {
-                    res.write(`<p>${i.subject}</p>`);
-                });
-                res.end(`</body></html>`); next();
+            if (tokenCache) {
+                serverAuth.updateAuthTokens(JSON.parse(tokenCache));
+                let data = await graphHelper.get('https://graph.microsoft.com/v1.0/me/messages');
+                if (data) {
+                    res.header('Content-Type', 'text/html');
+                    handleAuthHeaders(res);
+                    res.write(`<html><head></head><body><h1>Mail</h1>`);
+                    data.value.forEach(i => {
+                        res.write(`<p>${i.subject}</p>`);
+                    });
+                    res.end(`</body></html>`);
+                    next();
+                    return;
+                }
+                res.setHeader('Content-Type', 'text/html');
+                res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
+                next();
                 return;
             }
-            res.setHeader('Content-Type', 'text/html');
-            res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
-            next();
-            return;
         }
-
+        catch (err) { }
         res.setHeader('Content-Type', 'text/html');
         res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
         next();
@@ -94,61 +113,63 @@ export function create(config: any, callback?: () => void) {
     });
 
     server.get('/tasks', async (req, res, next) => {
-        console.log("Request for " + req.url);
-        let tokenCache = getCookie(req, 'tokenCache');
+        try {
+            console.log("Request for " + req.url);
+            let tokenCache = getCookie(req, 'tokenCache');
 
-        if (tokenCache) {
-            let authTokens = new AuthTokens(JSON.parse(tokenCache));
-            let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/beta/me/outlook/tasks', authTokens);
-            if (data && data.value) {
-                res.header('Content-Type', 'text/html');
-                if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
-                res.write(`<html><head></head><body><h1>Tasks</h1>`);
-                data.value.forEach(i => {
-                    res.write(`<p>${i.subject}</p>`);
-                });
-                res.end(`</body></html>`);
+            if (tokenCache) {
+                serverAuth.updateAuthTokens(JSON.parse(tokenCache));
+                let data = await graphHelper.get('https://graph.microsoft.com/beta/me/outlook/tasks');
+                if (data && data.value) {
+                    res.header('Content-Type', 'text/html');
+                    handleAuthHeaders(res)
+                    res.write(`<html><head></head><body><h1>Tasks</h1>`);
+                    data.value.forEach(i => {
+                        res.write(`<p>${i.subject}</p>`);
+                    });
+                    res.end(`</body></html>`);
+                    next();
+                    return;
+                }
+                // if you get here there was a send problem
+                res.setHeader('Content-Type', 'text/html');
+                res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
                 next();
                 return;
             }
-            // if you get here there was a send problem
-            res.setHeader('Content-Type', 'text/html');
-            res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
-            next();
-            return;
-        }
-
+        } catch (err) { }
         res.setHeader('Content-Type', 'text/html');
-        res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
+        res.end('<html><head></head><body>You need to be signed in: <br/><a href="/login">login</a></body></html>');
         next();
         // Could also send them back to authorize.
     });
 
     server.get('/profile', async (req, res, next) => {
-        console.log("Request for " + req.url);
-        let tokenCache = getCookie(req, 'tokenCache');
+        try {
+            console.log("Request for " + req.url);
+            let tokenCache = getCookie(req, 'tokenCache');
 
-        if (tokenCache) {
-            let authTokens = new AuthTokens(JSON.parse(tokenCache));
+            if (tokenCache) {
+                serverAuth.updateAuthTokens(JSON.parse(tokenCache));
+                
+                let data = await graphHelper.get('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger');
 
-            let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', authTokens);
-
-            if (data) {
-                res.header('Content-Type', 'text/html');
-                if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
-                res.write(`<html><head></head><body><h1>User extension net.shew.nagger</h1>`);
-                res.write(`<p> ${JSON.stringify(data)} </p>`);
-                res.end(`</body></html>`);
+                if (data) {
+                    res.header('Content-Type', 'text/html');
+                    handleAuthHeaders(res);
+                    res.write(`<html><head></head><body><h1>User extension net.shew.nagger</h1>`);
+                    res.write(`<p> ${JSON.stringify(data)} </p>`);
+                    res.end(`</body></html>`);
+                    next();
+                    return;
+                }
+                // if you get here there was a send problem
+                res.setHeader('Content-Type', 'text/html');
+                res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
                 next();
                 return;
             }
-            // if you get here there was a send problem
-            res.setHeader('Content-Type', 'text/html');
-            res.end('<html><head></head><body>Request to graph failed<br/><a href="/">Continue</a></body></html>');
-            next();
-            return;
-        }
-
+        } catch (err) { }
         res.setHeader('Content-Type', 'text/html');
         res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
         next();
@@ -156,20 +177,18 @@ export function create(config: any, callback?: () => void) {
     });
 
     server.get('/update', async (req, res, next) => {
-        console.log("Request for " + req.url);
-        let tokenCache = getCookie(req, 'tokenCache');
-
-        if (tokenCache) {
-            let authTokens = new AuthTokens(JSON.parse(tokenCache));
-
-            let updatedAuthTokens = await graphHelper.patch('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', { time: Date.now().toString() }, authTokens);
-
-            res.end(`<html><head></head><body><h1>User extension net.shew.nagger</h1><p>Updated</p></body></html>`);
-            next();
-            return;
-        }
-
-
+        try {
+            console.log("Request for " + req.url);
+            let tokenCache = getCookie(req, 'tokenCache');
+            if (tokenCache) {
+                serverAuth.updateAuthTokens(JSON.parse(tokenCache));
+                await graphHelper.patch('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', { time: Date.now().toString() });
+                handleAuthHeaders(res);
+                res.end(`<html><head></head><body><h1>User extension net.shew.nagger</h1><p>Updated</p></body></html>`);
+                next();
+                return;
+            }
+        } catch (err) { }
         res.setHeader('Content-Type', 'text/html');
         res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
         next();
