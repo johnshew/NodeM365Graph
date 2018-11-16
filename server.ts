@@ -136,7 +136,7 @@ export function create(config: any, callback?: () => void) {
             if (data) {
                 res.header('Content-Type', 'text/html');
                 if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
-                res.write(`<html><head></head><body><h1>Tasks</h1>`);                
+                res.write(`<html><head></head><body><h1>User extension net.shew.nagger</h1>`);                
                 res.write(`<p> ${ JSON.stringify(data) } </p>`);
                 res.end(`</body></html>`);
                 next();
