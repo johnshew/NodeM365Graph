@@ -4,9 +4,11 @@ import { AuthTokens, ServerAuth } from './simpleAuth';
 
 export class GraphHelper {
     // const app reg details  
+
     constructor(private serverAuth: ServerAuth) { }
 
-    private async  graphFetchHelper(url: string, accessToken: string): Promise<any> {
+    public async get(url: string, authToken: AuthTokens): Promise<[any, AuthTokens | null]> {
+        let [accessToken, updatedAuthToken] = await this.serverAuth.getAccessToken(authToken);
         let response = await fetch(url, {
             headers: {
                 'Accept': 'application/json',
@@ -15,14 +17,26 @@ export class GraphHelper {
         });
         if (response.status == 200) {
             let data = await response.json();
-            return data;
+            return [data,updatedAuthToken];
         }
-        return null;
+        return [null,null]
     }
 
-    public async get(url: string, authToken: AuthTokens): Promise<[any, AuthTokens | null]> {
+    
+    public async patch(url: string, body: any, authToken: AuthTokens): Promise<AuthTokens | null> {
         let [accessToken, updatedAuthToken] = await this.serverAuth.getAccessToken(authToken);
-        let data = accessToken ? await this.graphFetchHelper(url, accessToken) : null;
-        return [data, updatedAuthToken]
+        let response = await fetch(url, {
+            method : 'patch',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + accessToken
+            },
+            body: JSON.stringify(body)
+        });
+        if (response.status == 200 || response.status == 204) {
+            return updatedAuthToken;
+        }
+        return null;
     }
 }

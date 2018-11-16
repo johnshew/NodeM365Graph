@@ -8,8 +8,8 @@ import { ServerAuth, AuthTokens } from './simpleAuth';
 import { GraphHelper } from './graphHelper';
 import { exists } from 'fs';
 
-var id = process.env.AppClientId; 
-var pwd =process.env.AppClientSecret; 
+var id = process.env.AppClientId;
+var pwd = process.env.AppClientSecret;
 if (!id || !pwd) { throw new Error('No app credentials.'); process.exit(); }
 
 var serverUrl = 'http://localhost:8080';
@@ -74,11 +74,11 @@ export function create(config: any, callback?: () => void) {
             if (data) {
                 res.header('Content-Type', 'text/html');
                 if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
-                res.write(`<html><head></head><body><h1>Mail</h1>`);                
+                res.write(`<html><head></head><body><h1>Mail</h1>`);
                 data.value.forEach(i => {
                     res.write(`<p>${i.subject}</p>`);
                 });
-                res.end(`</body></html>`);next();
+                res.end(`</body></html>`); next();
                 return;
             }
             res.setHeader('Content-Type', 'text/html');
@@ -103,7 +103,7 @@ export function create(config: any, callback?: () => void) {
             if (data && data.value) {
                 res.header('Content-Type', 'text/html');
                 if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
-                res.write(`<html><head></head><body><h1>Tasks</h1>`);                
+                res.write(`<html><head></head><body><h1>Tasks</h1>`);
                 data.value.forEach(i => {
                     res.write(`<p>${i.subject}</p>`);
                 });
@@ -132,12 +132,12 @@ export function create(config: any, callback?: () => void) {
             let authTokens = new AuthTokens(JSON.parse(tokenCache));
 
             let [data, updatedAuthTokens] = await graphHelper.get('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', authTokens);
-            
+
             if (data) {
                 res.header('Content-Type', 'text/html');
                 if (updatedAuthTokens) { res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(updatedAuthTokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString()) }
-                res.write(`<html><head></head><body><h1>User extension net.shew.nagger</h1>`);                
-                res.write(`<p> ${ JSON.stringify(data) } </p>`);
+                res.write(`<html><head></head><body><h1>User extension net.shew.nagger</h1>`);
+                res.write(`<p> ${JSON.stringify(data)} </p>`);
                 res.end(`</body></html>`);
                 next();
                 return;
@@ -154,6 +154,28 @@ export function create(config: any, callback?: () => void) {
         next();
         // Could also send them back to authorize.
     });
+
+    server.get('/update', async (req, res, next) => {
+        console.log("Request for " + req.url);
+        let tokenCache = getCookie(req, 'tokenCache');
+
+        if (tokenCache) {
+            let authTokens = new AuthTokens(JSON.parse(tokenCache));
+
+            let updatedAuthTokens = await graphHelper.patch('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', { time: Date.now().toString() }, authTokens);
+
+            res.end(`<html><head></head><body><h1>User extension net.shew.nagger</h1><p>Updated</p></body></html>`);
+            next();
+            return;
+        }
+
+
+        res.setHeader('Content-Type', 'text/html');
+        res.end('<html><head></head><body>Not authorized<br/><a href="/">Continue</a></body></html>');
+        next();
+        // Could also send them back to authorize.
+    });
+
 
 
     /*     
