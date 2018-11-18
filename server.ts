@@ -4,7 +4,7 @@ let debug = _debug('server');
 import * as restify from 'restify';
 import * as uuid from 'uuid';
 
-import { ServerAuth, AuthTokens } from './simpleAuth';
+import { AuthManager } from './simpleAuth';
 import { GraphHelper } from './graphHelper';
 import { Server } from 'http';
 
@@ -16,32 +16,7 @@ var serverUrl = 'http://localhost:8080';
 var authUri = serverUrl + '/auth';
 var defaultScopes = ['openid', 'offline_access', 'mail.read', 'tasks.read', 'user.readwrite'];
 
-let authManager = new ServerAuth(id, pwd, authUri, defaultScopes);
-
-let updateAuthCookies = false;
-
-authManager.on('refreshed', () => {
-    console.log('refreshed');
-    updateAuthCookies = true;
-});
-
-/* 
-function handleAuthHeaders(res: restify.Response) {
-    if (updateAuthCookies) {
-        res.header('Set-Cookie', 'userId=' + authManager.tokens.id_token + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
-        //res.header('Set-Cookie', 'tokenCache=' + JSON.stringify(authManager.tokens) + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
-        updateAuthCookies = false;
-    }
-}
-
-function handleAuthCookies(req: restify.Request): AuthTokens {
-    let userId = getCookie(req, 'userId');
-    let tokens = userAuthTokens[userId];
-    authManager.tokens = tokens;
-    return tokens;
-}
-*/
-
+let authManager = new AuthManager(id, pwd, authUri, defaultScopes);
 let graphHelper = new GraphHelper();
 
 // Setup restify server
@@ -73,8 +48,8 @@ export function create(config: any, callback?: () => void) {
             // look for authorization code coming in (indicates redirect from interative login/consent)
             var code = req.query['code'];
             if (code) {
-                let userId = await authManager.getUserIdFromCode(code)
-                res.header('Set-Cookie', 'userId=' + userId + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
+                let userAuthSecret = await authManager.getUserAuthSecretFromCode(code)
+                res.header('Set-Cookie', 'userId=' + userAuthSecret + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
                 var location = req.query['state'] ? decodeURI(req.query['state']) : '/';
                 res.redirect(location, next);
                 res.end();
@@ -87,7 +62,6 @@ export function create(config: any, callback?: () => void) {
         next();
         return;
     });
-
 
     server.get('/mail', async (req, res, next) => {
         try {

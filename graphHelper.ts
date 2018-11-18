@@ -1,6 +1,5 @@
 import * as http from 'http';
 import * as fetch from 'node-fetch';
-import { AuthTokens, ServerAuth } from './simpleAuth';
 
 export class GraphHelper {
     // const app reg details  
