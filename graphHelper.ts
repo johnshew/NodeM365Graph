@@ -1,4 +1,3 @@
-import * as http from 'http';
 import * as fetch from 'node-fetch';
 
 export class GraphHelper {

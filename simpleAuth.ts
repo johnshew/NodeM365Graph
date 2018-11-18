@@ -1,8 +1,7 @@
-import * as http from 'http';
-import * as fetch from 'node-fetch';
 import { EventEmitter } from 'events';
 import { isDeepStrictEqual } from 'util';
 import { randomBytes } from 'crypto';
+import * as fetch from 'node-fetch';
 
 class AuthTokens {
     auth_secret: string;
@@ -94,8 +93,7 @@ export class AuthManager extends EventEmitter {
             let expires = new Date(Date.now() + data['expires_in'] * 1000);
             data['expires_on'] = expires.getTime();
         }
-        let secret = await this.generateSecretKey();
-        data['auth_secret'] = secret;
+        data['auth_secret'] = await this.generateSecretKey();
         let tokens = new AuthTokens(data);
         this.setTokensForUserAuthSecret(tokens.auth_secret, tokens);
         return tokens.auth_secret;
