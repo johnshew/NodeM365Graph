@@ -28,6 +28,11 @@ First clone the repo.  Then:
 
 `> npm run build`
 
+## To Do
+
+* Confirm that patch works if the key doesn't exist.
+
+
 ## Thanks
 
 To RichDizz for the initial golden thread demonstrating how to get long-runniung access.
