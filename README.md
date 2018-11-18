@@ -38,7 +38,7 @@ First clone the repo.  Then:
 
 The app needs to be registered with Azure AD.  This does not require admin access.  
 
-Once the app id and secret are know they should be placed into environment variables for the app to pick them up.
+Once the app id and secret are known they should be placed into environment variables for the app to pick them up.
 
 ## To Do
 
