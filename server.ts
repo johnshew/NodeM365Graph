@@ -6,6 +6,7 @@ import * as uuid from 'uuid';
 
 import { ServerAuth, AuthTokens } from './simpleAuth';
 import { GraphHelper } from './graphHelper';
+import { Server } from 'http';
 
 var id = process.env.AppClientId;
 var pwd = process.env.AppClientSecret;
@@ -16,15 +17,15 @@ var authUri = serverUrl + '/auth';
 var defaultScopes = ['openid', 'offline_access', 'mail.read', 'tasks.read', 'user.readwrite'];
 
 let authManager = new ServerAuth(id, pwd, authUri, defaultScopes);
-let userAuthTokens: { [s: string]: AuthTokens } = {};
 
 let updateAuthCookies = false;
+
 authManager.on('refreshed', () => {
     console.log('refreshed');
     updateAuthCookies = true;
-    userAuthTokens[authManager.tokens.id_token] = authManager.tokens;
 });
 
+/* 
 function handleAuthHeaders(res: restify.Response) {
     if (updateAuthCookies) {
         res.header('Set-Cookie', 'userId=' + authManager.tokens.id_token + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
@@ -39,8 +40,9 @@ function handleAuthCookies(req: restify.Request): AuthTokens {
     authManager.tokens = tokens;
     return tokens;
 }
+*/
 
-let graphHelper = new GraphHelper(authManager);
+let graphHelper = new GraphHelper();
 
 // Setup restify server
 export function create(config: any, callback?: () => void) {
@@ -71,9 +73,8 @@ export function create(config: any, callback?: () => void) {
             // look for authorization code coming in (indicates redirect from interative login/consent)
             var code = req.query['code'];
             if (code) {
-                await authManager.updateAuthFromCode(code)
-                // NOTE: cookie token cache not ideal - but could encrypt the tokens on the server
-                handleAuthHeaders(res);
+                let userId = await authManager.getUserIdFromCode(code)
+                res.header('Set-Cookie', 'userId=' + userId + '; expires=' + new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
                 var location = req.query['state'] ? decodeURI(req.query['state']) : '/';
                 res.redirect(location, next);
                 res.end();
@@ -91,11 +92,10 @@ export function create(config: any, callback?: () => void) {
     server.get('/mail', async (req, res, next) => {
         try {
             console.log("Request for " + req.url);
-            handleAuthCookies(req);
-            let data = await graphHelper.get('https://graph.microsoft.com/v1.0/me/messages');
+            let accessToken = await authManager.getAccessToken(getCookie(req, 'userId'));            
+            let data = await graphHelper.get(accessToken, 'https://graph.microsoft.com/v1.0/me/messages');
             if (data) {
                 res.header('Content-Type', 'text/html');
-                handleAuthHeaders(res);
                 res.write(`<html><head></head><body><h1>Mail</h1>`);
                 data.value.forEach(i => {
                     res.write(`<p>${i.subject}</p>`);
@@ -119,11 +119,10 @@ export function create(config: any, callback?: () => void) {
     server.get('/tasks', async (req, res, next) => {
         try {
             console.log("Request for " + req.url);
-            handleAuthCookies(req);
-            let data = await graphHelper.get('https://graph.microsoft.com/beta/me/outlook/tasks');
+            let accessToken = await authManager.getAccessToken(getCookie(req, 'userId'));            
+            let data = await graphHelper.get(accessToken, 'https://graph.microsoft.com/beta/me/outlook/tasks');
             if (data && data.value) {
                 res.header('Content-Type', 'text/html');
-                handleAuthHeaders(res)
                 res.write(`<html><head></head><body><h1>Tasks</h1>`);
                 data.value.forEach(i => {
                     res.write(`<p>${i.subject}</p>`);
@@ -139,7 +138,7 @@ export function create(config: any, callback?: () => void) {
             return;
         } catch (err) { }
         res.setHeader('Content-Type', 'text/html');
-        res.end('<html><head></head><body>You need to be signed in: <br/><a href="/login">login</a></body></html>');
+        res.end('<html><head></head><body>You need to be logged in. <a href="/login">login</a></body></html>');
         next();
         // Could also send them back to authorize.
     });
@@ -147,13 +146,10 @@ export function create(config: any, callback?: () => void) {
     server.get('/profile', async (req, res, next) => {
         try {
             console.log("Request for " + req.url);
-            handleAuthCookies(req);
-
-            let data = await graphHelper.get('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger');
-
+            let accessToken = await authManager.getAccessToken(getCookie(req, 'userId'));            
+            let data = await graphHelper.get(accessToken,'https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger');
             if (data) {
                 res.header('Content-Type', 'text/html');
-                handleAuthHeaders(res);
                 res.write(`<html><head></head><body><h1>User extension net.shew.nagger</h1>`);
                 res.write(`<p> ${JSON.stringify(data)} </p>`);
                 res.end(`</body></html>`);
@@ -175,9 +171,8 @@ export function create(config: any, callback?: () => void) {
     server.get('/update', async (req, res, next) => {
         try {
             console.log("Request for " + req.url);
-            handleAuthCookies(req);
-            await graphHelper.patch('https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', { time: new Date().toISOString()});
-            handleAuthHeaders(res);
+            let accessToken = await authManager.getAccessToken(getCookie(req, 'userId'));            
+            await graphHelper.patch(accessToken, 'https://graph.microsoft.com/v1.0/me/extensions/net.shew.nagger', { time: new Date().toISOString() });
             res.end(`<html><head></head><body><h1>User extension net.shew.nagger</h1><p>Updated</p></body></html>`);
             next();
             return;
@@ -188,8 +183,6 @@ export function create(config: any, callback?: () => void) {
         next();
         // Could also send them back to authorize.
     });
-
-
 
     /*     
         server.post('/api/v1.0/something', async (req, res, next) => {

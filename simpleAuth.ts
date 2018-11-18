@@ -19,26 +19,28 @@ export class AuthTokens {
 
 export class ServerAuth extends EventEmitter {
 
-    private _tokens : AuthTokens = new AuthTokens({});
+    private _tokensMap = new Map<string, AuthTokens>();
 
     constructor(private appId: string, private appPassword: string, private defaultRedirectUri: string, private scopes: string[] = []) {
         super();
 
     }
 
-    public get tokens(): AuthTokens {
-        return this._tokens;
+    getTokensForUser(userId: string): AuthTokens {
+        let tokens = this._tokensMap.get(userId);
+        if (tokens === undefined) throw new Error('Request for a token for unknown user.')
+        return tokens;
     }
 
-    public set tokens(value: AuthTokens) {
-        if (isDeepStrictEqual(this.tokens, value)) { 
-            return 
+    setTokensForUser(userId: string, value: AuthTokens) {
+        if (isDeepStrictEqual(this.getTokensForUser(userId), value)) {
+            return
         }
-        this._tokens = value;
+        this._tokensMap.set(userId, value);
         this.emit('refreshed');
     }
 
-    public load(data : Object) { this.tokens = new AuthTokens(data); }
+    // load(userId: string, data: Object) { this.setTokensForUser(userId, new AuthTokens(data)); }
 
     // gets code authorization redirect
     authUrl(): string {
@@ -49,22 +51,20 @@ export class ServerAuth extends EventEmitter {
         this.scopes.concat(scopes);
     }
 
-    async getAccessToken(resource?: string): Promise<string> {
-        if (this.tokens.access_token && this.tokens.expires_on && this.tokens.expires_on.valueOf() > Date.now()) { return this.tokens.access_token }
-        if (this.tokens.refresh_token) {
-            await this.refreshAuth();
+    async getAccessToken(userId: string, resource?: string): Promise<string> {
+        let tokens = this._tokensMap.get(userId);
+        if (!tokens) throw new Error('No tokens for user.  Not logged in.');
+        if (tokens.access_token && tokens.expires_on && tokens.expires_on.valueOf() > Date.now()) { return tokens.access_token }
+        if (tokens.refresh_token) {
+            let tokens = await this.refreshAuth(userId);
             this.emit('refreshed');
-            return this.tokens.access_token;
+            return tokens.access_token;
         }
         throw new Error('No access token available');
     }
-
-    updateAuthFromObject(data : Object) {
-        this.tokens = new AuthTokens(data);
-    }
-
+  
     // gets tokens from authorization code
-    async updateAuthFromCode(code: string): Promise<void> {
+    async getUserIdFromCode(code: string): Promise<string> {
         var body = `client_id=${this.appId}`;
         body += `&scope=${this.scopes.join('%20')}`;
         body += `&code=${code}`;
@@ -84,14 +84,17 @@ export class ServerAuth extends EventEmitter {
             let expires = new Date(Date.now() + data['expires_in'] * 1000);
             data['expires_on'] = expires.getTime();
         }
-        this.tokens = new AuthTokens(data);
+        let tokens = new AuthTokens(data);
+        this._tokensMap.set(tokens.id_token, tokens);
+        return tokens.id_token;
     }
 
     // gets new access token using refresh token
-    async refreshAuth() {
+    async refreshAuth(userId: string): Promise<AuthTokens> {
+        let tokens = this.getTokensForUser(userId);
         var body = `client_id=${this.appId}`;
         body += `&scope=${this.scopes.join('%20')}`;
-        body += `&refresh_token=${this.tokens.refresh_token}`;
+        body += `&refresh_token=${tokens.refresh_token}`;
         body += `&redirect_uri=${this.defaultRedirectUri}`;
         body += `&grant_type=refresh_token&client_secret=${this.appPassword}`;
 
@@ -108,13 +111,16 @@ export class ServerAuth extends EventEmitter {
             let expires = new Date(Date.now() + data['expires_in'] * 1000);
             data['expires_on'] = expires.getTime();
         }
-        this.tokens = new AuthTokens(data);
+        tokens = new AuthTokens(data);
+        this._tokensMap.set(tokens.id_token, tokens);
+        if (tokens && tokens.id_token) return tokens;
+        throw new Error('Should not have an authToken without an id_token');
     }
 }
 
 export declare interface ServerAuth {
     on(event: 'refreshed', listener: () => void): this;
-    emit(event: 'refreshed') : boolean
+    emit(event: 'refreshed'): boolean
     // on(event: string, listener: Function): this;
     // emit(event: string | symbol, ...args : any[]) : boolean;
 }

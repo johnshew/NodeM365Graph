@@ -5,10 +5,7 @@ import { AuthTokens, ServerAuth } from './simpleAuth';
 export class GraphHelper {
     // const app reg details  
 
-    constructor(private serverAuth: ServerAuth) { }
-
-    public async get(url: string): Promise<any> {
-        let accessToken = await this.serverAuth.getAccessToken();
+    public async get(accessToken : string, url: string): Promise<any> {
         let response = await fetch(url, {
             headers: {
                 'Accept': 'application/json',
@@ -23,8 +20,7 @@ export class GraphHelper {
     }
 
     
-    public async patch(url: string, body: any): Promise<void> {
-        let accessToken = await this.serverAuth.getAccessToken();
+    public async patch(accessToken : string, url: string, body: any): Promise<void> {
         let response = await fetch(url, {
             method : 'patch',
             headers: {
