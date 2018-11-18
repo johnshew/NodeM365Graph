@@ -1,6 +1,6 @@
 # A Web App for the Microsoft Graph buid in Node
 
-This is simple web app that enables long-running access to information in the Microsoft graph.  It is build in node.
+This is simple web app that enables long-running access to information in the Microsoft graph.  It is built in node.
 
 Users login with Azure Active Directory.  It supports login with Azure AD organization identities and, if the node server is enabled with HTTPS, it also supports Microsoft personal accounts.
 
@@ -28,8 +28,17 @@ So the demonstrated approach should be easy to implement on small devices or wit
 
 First clone the repo.  Then:
 
+
 `> npm install`
+
 `> npm run build`
+
+
+## Configuration
+
+The app needs to be registered with Azure AD.  This does not require admin access.  
+
+Once the app id and secret are know they should be placed into environment variables for the app to pick them up.
 
 ## To Do
 
