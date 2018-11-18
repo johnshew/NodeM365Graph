@@ -42,8 +42,6 @@ export class AuthManager extends EventEmitter {
         this.emit('refreshed');
     }
 
-    // load(userId: string, data: Object) { this.setTokensForUser(userId, new AuthTokens(data)); }
-
     // gets code authorization redirect
     authUrl(): string {
         return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${this.appId}&response_type=code&redirect_uri=${this.defaultRedirectUri}&scope=${this.scopes.join('%20')}`;
@@ -54,21 +52,26 @@ export class AuthManager extends EventEmitter {
     }
 
     async getAccessToken(authSecret: string, resource?: string): Promise<string> {
-        let tokens = this._tokensMap.get(authSecret);
-        if (!tokens) throw new Error('No tokens for user. Not logged in.');
-        if (tokens.access_token && tokens.expires_on && tokens.expires_on.valueOf() > Date.now()) { return tokens.access_token }
-        if (tokens.refresh_token) {
-            let tokens = await this.refreshTokens(authSecret);
-            return tokens.access_token;
-        }
-        throw new Error('No access token available');
+        return new Promise<string>(async (resolve, reject) => {
+            try {
+                let tokens = this._tokensMap.get(authSecret);
+                if (!tokens) { return reject('No tokens for user. Not logged in.'); }
+                if (tokens.access_token && tokens.expires_on && tokens.expires_on.valueOf() > Date.now()) { return resolve(tokens.access_token); }
+                if (tokens.refresh_token) {
+                    let tokens = await this.refreshTokens(authSecret);
+                    return resolve(tokens.access_token);
+                }
+                return reject('Unable to refresh to get an access token.');
+            }
+            catch (err) { return reject('Could not get access token.  Reason: ' + err) }
+        })
     }
 
     async generateSecretKey(): Promise<string> {
         return new Promise<string>((resolve, reject) => {
             randomBytes(48, (err, buf) => {
-                if (err) reject('Could not generate secret');
-                resolve(buf.toString('hex'));
+                if (err) return reject('Could not generate secret');
+                return resolve(buf.toString('hex'));
             });
         });
     }
@@ -90,7 +93,7 @@ export class AuthManager extends EventEmitter {
                     },
                     body: body
                 });
-                if (res.status !== 200) { reject('get token failed.'); }
+                if (res.status !== 200) { return reject('get token failed.'); }
                 var data = await res.json();
                 if (data['expires_in']) {
                     let expires = new Date(Date.now() + data['expires_in'] * 1000);
@@ -99,9 +102,9 @@ export class AuthManager extends EventEmitter {
                 data['auth_secret'] = await this.generateSecretKey();
                 let tokens = new AuthTokens(data);
                 this.setTokensForUserAuthSecret(tokens.auth_secret, tokens);
-                resolve( tokens.auth_secret);
+                return resolve(tokens.auth_secret);
             }
-            catch (err) { reject(err);  }
+            catch (err) { return reject(err); }
         });
     }
 
@@ -111,7 +114,7 @@ export class AuthManager extends EventEmitter {
         return new Promise<AuthTokens>(async (resolve, reject) => {
             try {
                 let tokens = this.getTokensFromUserAuthSecret(authSecret);
-                if (!tokens) throw new Error('No token for that authSecret.');
+                if (!tokens) return reject('No token for that authSecret.');
                 var body = `client_id=${this.appId}`;
                 body += `&scope=${this.scopes.join('%20')}`;
                 body += `&refresh_token=${tokens.refresh_token}`;
@@ -125,7 +128,7 @@ export class AuthManager extends EventEmitter {
                     },
                     body: body
                 });
-                if (res.status !== 200) { reject('get token failed.'); }
+                if (res.status !== 200) { return reject('get token failed.'); }
                 var data = await res.json();
                 if (data['expires_in']) {
                     let expires = new Date(Date.now() + data['expires_in'] * 1000);
@@ -134,9 +137,9 @@ export class AuthManager extends EventEmitter {
                 data['auth_secret'] = tokens.auth_secret;
                 let refreshedTokens = new AuthTokens(data);
                 this.setTokensForUserAuthSecret(refreshedTokens.auth_secret, refreshedTokens);
-                resolve(refreshedTokens);
+                return resolve(refreshedTokens);
             }
-            catch (err) { reject(err); }
+            catch (err) { return reject(err); }
         });
     }
 }
