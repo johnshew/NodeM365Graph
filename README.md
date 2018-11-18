@@ -1,8 +1,8 @@
-# Node Web App using Microsoft Graph
+# A Web App for the Microsoft Graph buid in Node
 
-This is simple web app build in node that enables long-running access to information in the Microsoft graph.  
+This is simple web app that enables long-running access to information in the Microsoft graph.  It is build in node.
 
-Users login with Azure Active Directory.  It supports login with Azure AD organization identities and, if the node server is enabled with HTTPS, it supports Microsoft personal accounts.
+Users login with Azure Active Directory.  It supports login with Azure AD organization identities and, if the node server is enabled with HTTPS, it also supports Microsoft personal accounts.
 
 The app shows how to maintain a long-running (offline) connection to the Microsoft graph enabling the node app to read mail or tasks and read and write to an extension on the user's profile.  The OAUTH2 refresh_token is used to update the access_token when it expires.
 
