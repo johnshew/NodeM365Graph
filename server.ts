@@ -1,5 +1,3 @@
-import * as _debug from 'debug';
-let debug = _debug('server');
 import * as restify from 'restify';
 import { AuthManager } from './simpleAuth';
 import { GraphHelper } from './graphHelper';
@@ -12,6 +10,7 @@ var authUri = serverUrl + '/auth';
 var defaultScopes = ['openid', 'offline_access', 'mail.read', 'tasks.read', 'user.readwrite'];
 let authManager = new AuthManager(id, pwd, authUri, defaultScopes);
 let graphHelper = new GraphHelper();
+authManager.on('refreshed', () => console.log('refreshed'))
 
 // Setup restify server
 export function create(config: any, callback?: () => void) {
@@ -37,9 +36,6 @@ export function create(config: any, callback?: () => void) {
 
     server.get('/auth', async (req, res, next) => {
         console.log("Request for " + req.url);
-        let htmlContent = 'Request to authorize failed';
-        let title = 'Auth';
-
         try {
             // look for authorization code coming in (indicates redirect from interative login/consent)
             var code = req.query['code'];
@@ -52,7 +48,9 @@ export function create(config: any, callback?: () => void) {
                 return;
             }
         }
-        catch (reason) { console.log('Error in /auth processing: ' + reason) }
+        catch (reason) { 
+            console.log('Error in /auth processing: ' + reason) 
+        }
         res.setHeader('Content-Type', 'text/html');
         res.end('<html><head></head><body>Request to authorize failed<br/><a href="/">Continue</a></body></html>');
         next();

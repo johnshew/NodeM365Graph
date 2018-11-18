@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { isDeepStrictEqual } from 'util';
 import { randomBytes } from 'crypto';
+
 import * as fetch from 'node-fetch';
 
 class AuthTokens {
@@ -26,9 +27,9 @@ export class AuthManager extends EventEmitter {
 
     constructor(private appId: string, private appPassword: string, private defaultRedirectUri: string, private scopes: string[] = []) { super(); }
 
-    getTokensFromUserAuthSecret(authSecret: string): AuthTokens {
+    getTokensFromUserAuthSecret(authSecret: string): AuthTokens | null {
         let tokens = this._tokensMap.get(authSecret);
-        if (tokens === undefined) throw new Error('Request for a token for unknown user.')
+        if (!tokens) return null;
         return tokens;
     }
 
@@ -63,68 +64,80 @@ export class AuthManager extends EventEmitter {
         throw new Error('No access token available');
     }
 
-    async generateSecretKey() : Promise<string> {
+    async generateSecretKey(): Promise<string> {
         return new Promise<string>((resolve, reject) => {
-            randomBytes(48, (err, buf) => { 
+            randomBytes(48, (err, buf) => {
                 if (err) reject('Could not generate secret');
-                resolve( buf.toString('hex'));
+                resolve(buf.toString('hex'));
             });
         });
-    }     
-     
+    }
+
     // gets tokens from authorization code
     async getUserAuthSecretFromCode(code: string): Promise<string> {
-        var body = `client_id=${this.appId}`;
-        body += `&scope=${this.scopes.join('%20')}`;
-        body += `&code=${code}`;
-        body += `&redirect_uri=${this.defaultRedirectUri}`;
-        body += `&grant_type=authorization_code&client_secret=${this.appPassword}`;
+        return new Promise<string>(async (resolve, reject) => {
+            try {
+                var body = `client_id=${this.appId}`;
+                body += `&scope=${this.scopes.join('%20')}`;
+                body += `&code=${code}`;
+                body += `&redirect_uri=${this.defaultRedirectUri}`;
+                body += `&grant_type=authorization_code&client_secret=${this.appPassword}`;
 
-        var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: body
+                var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: body
+                });
+                if (res.status !== 200) { reject('get token failed.'); }
+                var data = await res.json();
+                if (data['expires_in']) {
+                    let expires = new Date(Date.now() + data['expires_in'] * 1000);
+                    data['expires_on'] = expires.getTime();
+                }
+                data['auth_secret'] = await this.generateSecretKey();
+                let tokens = new AuthTokens(data);
+                this.setTokensForUserAuthSecret(tokens.auth_secret, tokens);
+                resolve( tokens.auth_secret);
+            }
+            catch (err) { reject(err);  }
         });
-        if (res.status !== 200) { throw new Error('get token failed.'); }
-        var data = await res.json();
-        if (data['expires_in']) {
-            let expires = new Date(Date.now() + data['expires_in'] * 1000);
-            data['expires_on'] = expires.getTime();
-        }
-        data['auth_secret'] = await this.generateSecretKey();
-        let tokens = new AuthTokens(data);
-        this.setTokensForUserAuthSecret(tokens.auth_secret, tokens);
-        return tokens.auth_secret;
     }
+
 
     // updates access token using refresh token
     async refreshTokens(authSecret: string): Promise<AuthTokens> {
-        let tokens = this.getTokensFromUserAuthSecret(authSecret);
-        var body = `client_id=${this.appId}`;
-        body += `&scope=${this.scopes.join('%20')}`;
-        body += `&refresh_token=${tokens.refresh_token}`;
-        body += `&redirect_uri=${this.defaultRedirectUri}`;
-        body += `&grant_type=refresh_token&client_secret=${this.appPassword}`;
+        return new Promise<AuthTokens>(async (resolve, reject) => {
+            try {
+                let tokens = this.getTokensFromUserAuthSecret(authSecret);
+                if (!tokens) throw new Error('No token for that authSecret.');
+                var body = `client_id=${this.appId}`;
+                body += `&scope=${this.scopes.join('%20')}`;
+                body += `&refresh_token=${tokens.refresh_token}`;
+                body += `&redirect_uri=${this.defaultRedirectUri}`;
+                body += `&grant_type=refresh_token&client_secret=${this.appPassword}`;
 
-        var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: body
+                var res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: body
+                });
+                if (res.status !== 200) { reject('get token failed.'); }
+                var data = await res.json();
+                if (data['expires_in']) {
+                    let expires = new Date(Date.now() + data['expires_in'] * 1000);
+                    data['expires_on'] = expires.getTime();
+                }
+                data['auth_secret'] = tokens.auth_secret;
+                let refreshedTokens = new AuthTokens(data);
+                this.setTokensForUserAuthSecret(refreshedTokens.auth_secret, refreshedTokens);
+                resolve(refreshedTokens);
+            }
+            catch (err) { reject(err); }
         });
-        if (res.status !== 200) { throw new Error('get token failed.'); }
-        var data = await res.json();
-        if (data['expires_in']) {
-            let expires = new Date(Date.now() + data['expires_in'] * 1000);
-            data['expires_on'] = expires.getTime();
-        }
-        data['auth_secret'] = tokens.auth_secret;
-        let refreshedTokens = new AuthTokens(data);
-        this.setTokensForUserAuthSecret(refreshedTokens.auth_secret, refreshedTokens);
-        return refreshedTokens;
     }
 }
 
