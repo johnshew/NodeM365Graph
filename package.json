@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Hello World",
   "repository": {
-    "type" : "git",
-    "url" : "https://github.com/johnshew/NodeMicrosoftGraph.git"
+    "type": "git",
+    "url": "https://github.com/johnshew/NodeMicrosoftGraph.git"
   },
   "main": "app.js",
   "scripts": {
@@ -17,6 +17,7 @@
   "author": "johnshew@users.noreply.github.com",
   "license": "MIT",
   "devDependencies": {
+    "@microsoft/microsoft-graph-types": "^1.5.0",
     "@types/chai": "^4.1.7",
     "@types/chai-http": "^3.0.5",
     "@types/debug": "0.0.31",
@@ -30,9 +31,11 @@
     "typescript": "^3.1.6"
   },
   "dependencies": {
+    "@types/dotenv": "^6.1.0",
     "chai": "^4.1.2",
     "chai-http": "^4.2.0",
     "debug": "^4.1.0",
+    "dotenv": "^6.1.0",
     "mocha": "^5.2.0",
     "mongodb": "^3.1.9",
     "node-fetch": "^2.3.0",
